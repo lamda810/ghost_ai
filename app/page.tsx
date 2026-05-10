@@ -46,6 +46,8 @@ export default function Home() {
   const [chainActivity, setChainActivity] = useState<string[]>([]);
   const [walletAddress, setWalletAddress] = useState("");
   const [connectingWallet, setConnectingWallet] = useState(false);
+  const [suspiciousFile, setSuspiciousFile] = useState<File | null>(null);
+  const [fileNotice, setFileNotice] = useState("");
   const phantomDetected = typeof window === "undefined" ? true : Boolean(getPhantomProvider());
   const activities = [
     {
@@ -63,6 +65,18 @@ export default function Home() {
   ];
 
   const analyzeFile = async () => {
+    if (!suspiciousFile) {
+      setFileNotice("Please upload a valid file before analyzing.");
+      return;
+    }
+
+    if (suspiciousFile.size === 0) {
+      setFileNotice("Empty files cannot be analyzed. Please upload a real file.");
+      setSuspiciousFile(null);
+      return;
+    }
+
+    setFileNotice("");
     setLoading(true);
 
     try {
@@ -115,6 +129,26 @@ export default function Home() {
 
   const verifyHuman = () => {
     setHumanVerified(true);
+  };
+
+  const handleSuspiciousFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = event.target.files?.[0] ?? null;
+
+    if (!selectedFile) {
+      setSuspiciousFile(null);
+      setFileNotice("");
+      return;
+    }
+
+    if (selectedFile.size === 0) {
+      setSuspiciousFile(null);
+      setFileNotice("Empty files cannot be analyzed. Please upload a real file.");
+      event.target.value = "";
+      return;
+    }
+
+    setSuspiciousFile(selectedFile);
+    setFileNotice("");
   };
 
   const connectPhantomDirectly = async () => {
@@ -224,8 +258,13 @@ export default function Home() {
               <input
                 type="file"
                 title="Upload file for analysis"
+                onChange={handleSuspiciousFileChange}
                 className="w-full bg-gray-900 border border-gray-700 rounded-xl p-4"
               />
+
+              {fileNotice && (
+                <p className="text-sm text-amber-300 -mt-2">{fileNotice}</p>
+              )}
 
               <p className="text-left w-full text-gray-400">
                 Upload Selfie for Human Verification
@@ -251,7 +290,8 @@ export default function Home() {
 
             <button
               onClick={analyzeFile}
-              className="w-full bg-gradient-to-r from-purple-600 to-blue-600 py-4 rounded-xl font-semibold hover:scale-105 transition"
+              disabled={!suspiciousFile || suspiciousFile.size === 0 || loading}
+              className="w-full bg-gradient-to-r from-purple-600 to-blue-600 disabled:cursor-not-allowed disabled:opacity-60 py-4 rounded-xl font-semibold hover:scale-105 transition"
             >
               {loading ? "Analyzing..." : "Analyze with AI"}
             </button>
