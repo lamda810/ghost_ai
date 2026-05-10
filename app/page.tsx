@@ -1,15 +1,42 @@
 "use client";
 
 import jsPDF from "jspdf";
-import { useState } from "react";
-import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+import { useEffect, useState } from "react";
+import { useWallet } from "@solana/wallet-adapter-react";
+import WalletErrorBanner from "./components/WalletErrorBanner";
 import {
   Upload,
   ShieldCheck,
   AlertTriangle,
 } from "lucide-react";
 
+type PhantomProvider = {
+  connect: () => Promise<{
+    publicKey?: {
+      toString: () => string;
+      toBase58: () => string;
+    };
+  }>;
+};
+
+type PhantomWindow = Window & {
+  phantom?: {
+    solana?: PhantomProvider;
+  };
+  solana?: PhantomProvider;
+};
+
+const getPhantomProvider = () => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const phantomWindow = window as PhantomWindow;
+  return phantomWindow.phantom?.solana || phantomWindow.solana || null;
+};
+
 export default function Home() {
+  const { connected, connect, publicKey } = useWallet();
   const [score, setScore] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [verified, setVerified] = useState(false);
@@ -19,6 +46,19 @@ export default function Home() {
   const [humanVerified, setHumanVerified] = useState(false);
   const [selfieUploaded, setSelfieUploaded] = useState(false);
   const [chainActivity, setChainActivity] = useState<string[]>([]);
+  const [walletAddress, setWalletAddress] = useState("");
+  const phantomDetected = typeof window === "undefined" ? true : Boolean(getPhantomProvider());
+
+  useEffect(() => {
+    if (publicKey) {
+      setWalletAddress(publicKey.toBase58());
+      return;
+    }
+
+    if (!connected) {
+      setWalletAddress("");
+    }
+  }, [connected, publicKey]);
   const activities = [
     {
       user: "0xA91F",
@@ -89,6 +129,41 @@ export default function Home() {
     setHumanVerified(true);
   };
 
+  const connectPhantomDirectly = async () => {
+    try {
+      const phantom = getPhantomProvider();
+
+      await connect();
+
+      if (publicKey) {
+        setWalletAddress(publicKey.toBase58());
+        return;
+      }
+
+      if (!phantom) {
+        window.dispatchEvent(
+          new CustomEvent("wallet-error", {
+            detail: "Phantom wallet extension was not detected. Please install Phantom and reload the page.",
+          })
+        );
+        return;
+      }
+
+      const response = await phantom.connect();
+      const address = response?.publicKey?.toString?.() ?? response?.publicKey?.toBase58?.() ?? "";
+
+      if (address) {
+        setWalletAddress(address);
+      }
+    } catch {
+      window.dispatchEvent(
+        new CustomEvent("wallet-error", {
+          detail: "Phantom could not connect. Unlock the extension, allow the site, then try again.",
+        })
+      );
+    }
+  };
+
   const downloadCertificate = () => {
     const doc = new jsPDF();
 
@@ -116,6 +191,7 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-black text-white px-6 py-10">
+      <WalletErrorBanner />
       {/* HERO */}
       <section className="flex flex-col items-center justify-center text-center mt-16">
         <div className="bg-purple-500/20 text-purple-300 px-4 py-2 rounded-full mb-6 border border-purple-500/30">
@@ -306,10 +382,36 @@ export default function Home() {
               </div>
 
               <div className="flex flex-col items-center gap-4">
-                <WalletMultiButton />
+                <button
+                  onClick={connectPhantomDirectly}
+                  type="button"
+                  disabled={connected}
+                  className="w-full bg-[#8b5cf6] hover:bg-[#7c3aed] px-6 py-3 rounded-xl font-semibold transition"
+                >
+                  {connected ? "Phantom Connected" : "Connect Phantom Directly"}
+                </button>
+
+                {walletAddress && (
+                  <p className="text-sm text-green-400 break-all">
+                    Connected: {walletAddress}
+                  </p>
+                )}
+
+                {!phantomDetected && (
+                  <div className="w-full rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-left text-sm text-amber-100">
+                    <p className="font-semibold text-amber-300 mb-2">
+                      Phantom not detected
+                    </p>
+                    <p className="text-gray-200">
+                      Install the Phantom wallet extension, refresh this page,
+                      and unlock the wallet before connecting.
+                    </p>
+                  </div>
+                )}
 
                 <button
                   onClick={verifyOnBlockchain}
+                  type="button"
                   className="bg-green-600 hover:bg-green-700 px-6 py-3 rounded-xl font-semibold transition"
                 >
                   Verify on Solana
