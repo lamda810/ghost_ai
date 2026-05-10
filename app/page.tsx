@@ -2,7 +2,6 @@
 
 import jsPDF from "jspdf";
 import { useEffect, useState } from "react";
-import { useWallet } from "@solana/wallet-adapter-react";
 import WalletErrorBanner from "./components/WalletErrorBanner";
 import {
   Upload,
@@ -36,7 +35,6 @@ const getPhantomProvider = () => {
 };
 
 export default function Home() {
-  const { connected, connect, publicKey } = useWallet();
   const [score, setScore] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [verified, setVerified] = useState(false);
@@ -47,18 +45,8 @@ export default function Home() {
   const [selfieUploaded, setSelfieUploaded] = useState(false);
   const [chainActivity, setChainActivity] = useState<string[]>([]);
   const [walletAddress, setWalletAddress] = useState("");
+  const [connectingWallet, setConnectingWallet] = useState(false);
   const phantomDetected = typeof window === "undefined" ? true : Boolean(getPhantomProvider());
-
-  useEffect(() => {
-    if (publicKey) {
-      setWalletAddress(publicKey.toBase58());
-      return;
-    }
-
-    if (!connected) {
-      setWalletAddress("");
-    }
-  }, [connected, publicKey]);
   const activities = [
     {
       user: "0xA91F",
@@ -130,15 +118,10 @@ export default function Home() {
   };
 
   const connectPhantomDirectly = async () => {
+    setConnectingWallet(true);
+
     try {
       const phantom = getPhantomProvider();
-
-      await connect();
-
-      if (publicKey) {
-        setWalletAddress(publicKey.toBase58());
-        return;
-      }
 
       if (!phantom) {
         window.dispatchEvent(
@@ -150,17 +133,26 @@ export default function Home() {
       }
 
       const response = await phantom.connect();
-      const address = response?.publicKey?.toString?.() ?? response?.publicKey?.toBase58?.() ?? "";
+      const address = response?.publicKey?.toBase58?.() ?? response?.publicKey?.toString?.() ?? "";
 
-      if (address) {
-        setWalletAddress(address);
+      if (!address) {
+        window.dispatchEvent(
+          new CustomEvent("wallet-error", {
+            detail: "Phantom connected, but no wallet address was returned.",
+          })
+        );
+        return;
       }
+
+      setWalletAddress(address);
     } catch {
       window.dispatchEvent(
         new CustomEvent("wallet-error", {
           detail: "Phantom could not connect. Unlock the extension, allow the site, then try again.",
         })
       );
+    } finally {
+      setConnectingWallet(false);
     }
   };
 
@@ -385,10 +377,14 @@ export default function Home() {
                 <button
                   onClick={connectPhantomDirectly}
                   type="button"
-                  disabled={connected}
-                  className="w-full bg-[#8b5cf6] hover:bg-[#7c3aed] px-6 py-3 rounded-xl font-semibold transition"
+                  disabled={connectingWallet}
+                  className="w-full bg-[#8b5cf6] hover:bg-[#7c3aed] disabled:cursor-not-allowed disabled:opacity-70 px-6 py-3 rounded-xl font-semibold transition"
                 >
-                  {connected ? "Phantom Connected" : "Connect Phantom Directly"}
+                  {connectingWallet
+                    ? "Connecting Phantom..."
+                    : walletAddress
+                    ? "Phantom Connected"
+                    : "Connect Phantom Directly"}
                 </button>
 
                 {walletAddress && (
